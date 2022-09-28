@@ -15,6 +15,7 @@ import time
 
 import tidalapi
 from tqdm import tqdm
+from datetime import datetime
 
 from app import _ultrasonics
 from ultrasonics import logs
@@ -35,11 +36,6 @@ handshake = {
         },
         {
             "type": "text",
-            "label": "Session ID",
-            "name": "session_id",
-        },
-        {
-            "type": "text",
             "label": "Token Type",
             "name": "token_type",
         },
@@ -52,6 +48,11 @@ handshake = {
             "type": "text",
             "label": "Refresh Token",
             "name": "refresh_token",
+        },
+        {
+            "type": "text",
+            "label": "Expiry Time",
+            "name": "expiry_time",
         },
         {
             "type": "string",
@@ -95,7 +96,7 @@ def run(settings_dict, **kwargs):
             self.session = tidalapi.Session()
 
         def login(self):
-            success = self.session.load_oauth_session(database["session_id"], database["token_type"], database["access_token"], database["refresh_token"])
+            success = self.session.load_oauth_session(database["token_type"], database["access_token"], database["refresh_token"], datetime.fromisoformat(database["expiry_time"]))
             if success:
                 log.debug("Successfully loaded session")
             else:
@@ -108,6 +109,7 @@ def run(settings_dict, **kwargs):
             """
             errors = 0
 
+            # Try once again when error
             while errors <= 1:
                 try:
                     return tidal_func(*args, **kwargs)
@@ -118,9 +120,9 @@ def run(settings_dict, **kwargs):
                     self.session.token_refresh(database["refresh_token"])
                     errors += 1
                     continue
-
-            log.error("An error occurred while trying to contact the Tidal api.")
-            raise Exception(e)
+            
+            # raise exception if no return
+            raise Exception("An error occurred while trying to contact the Tidal api.")
 
         def search(self, track):
             """
@@ -404,7 +406,8 @@ def run(settings_dict, **kwargs):
     # auth = json.loads(database["auth"])
     s.refresh_token = database["refresh_token"]
 
-    s.login()
+    if not (s.login() or s.login()):
+        return None
 
     if component == "inputs":
         if settings_dict["mode"] == "playlists":
@@ -600,7 +603,7 @@ def test(database, **kwargs):
     # global_settings = kwargs["global_settings"]
 
     session = tidalapi.Session()
-    assert session.load_oauth_session(database["session_id"], database["token_type"], database["access_token"], database["refresh_token"]), "Error logging in"
+    assert session.load_oauth_session(database["token_type"], database["access_token"], database["refresh_token"], datetime.fromisoformat(database["expiry_time"])), "Error logging in"
 
 
 def builder(**kwargs):
